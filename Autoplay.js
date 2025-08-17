@@ -364,8 +364,50 @@ module.exports.createAutoplay = function createAutoplay(deps) {
     console.log(`[Autoplay] checkAndAutofillSongs start - autoplayMode=${!!(deps.autoplayModeGetter && deps.autoplayModeGetter())}, allSongs=${(deps.allSongs||[]).length}`);
     if (!deps.autoplayModeGetter || !deps.autoplayModeGetter()) return;
     const allSongs = deps.allSongs;
-    if (allSongs.length >= 10) {
-      console.log('[Autoplay] playlist already >= 10, skipping autofill');
+
+    // NEW: compute upcoming count (prefer explicit helper if provided)
+    function getUpcomingCount() {
+      try {
+        // allow explicit override from host
+        if (typeof deps.getUpcomingSongsCount === 'function') {
+          const v = deps.getUpcomingSongsCount();
+          if (typeof v === 'number' && !isNaN(v)) return Math.max(0, Math.floor(v));
+        }
+
+        // get current playing index (support multiple names)
+        let currentIndex = null;
+        if (typeof deps.getCurrentIndex === 'function') currentIndex = deps.getCurrentIndex();
+        else if (typeof deps.getCurrentSongIndex === 'function') currentIndex = deps.getCurrentSongIndex();
+        else if (typeof deps.currentIndex === 'number') currentIndex = deps.currentIndex;
+        else if (typeof deps.currentSongIndex === 'number') currentIndex = deps.currentSongIndex;
+
+        if (typeof currentIndex === 'number' && !isNaN(currentIndex)) {
+          // determine lastSong index: prefer explicit lastSong info if provided
+          let lastIndex = (allSongs && allSongs.length) ? allSongs.length - 1 : -1;
+          try {
+            const lastSongInfo = (typeof deps.getLastSongInfo === 'function') ? deps.getLastSongInfo() : null;
+            if (lastSongInfo && lastSongInfo.url && Array.isArray(allSongs) && allSongs.length > 0) {
+              // find last occurrence of the lastSong URL to handle duplicates
+              for (let i = allSongs.length - 1; i >= 0; i--) {
+                if (allSongs[i] && allSongs[i].url === lastSongInfo.url) { lastIndex = i; break; }
+              }
+            }
+          } catch (e) {
+            // ignore and use default lastIndex
+          }
+          return Math.max(0, Math.floor(lastIndex) - Math.floor(currentIndex));
+        }
+
+        // fallback: treat whole list as upcoming
+        return allSongs.length;
+      } catch (e) {
+        return allSongs.length;
+      }
+    }
+
+    // use upcoming count instead of total allSongs length for the initial skip
+    if (getUpcomingCount() >= 10) {
+      console.log('[Autoplay] upcoming queue already >= 10, skipping autofill');
       return;
     }
 
@@ -426,7 +468,8 @@ module.exports.createAutoplay = function createAutoplay(deps) {
         const upNext = await getUpNext(seedText);
         console.log(`[Autoplay] seed="${seedText}" returned upNext=${upNext.length}`);
         for (const c of upNext) {
-          if (allSongs.length >= 10) break;
+          // stop adding when upcoming queue reaches limit
+          if (getUpcomingCount() >= 10) break;
           if (!utils.canAddUrl(c.url)) continue;
 
           // enrich once early so we have title/author/duration for checks

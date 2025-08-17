@@ -4,17 +4,24 @@ const { Client, Events, GatewayIntentBits } = require('discord.js');
 const { token, volume } = require('./config.json'); // removed unused User_id
 const express = require('express');
 const SocketServer = require('ws').Server;
+const fs = require('fs');
+const path = require('path');
+const https = require('https');
+const http = require('http');
 const { Innertube } = require('youtubei.js');
 
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, NoSubscriberBehavior, StreamType } = require('@discordjs/voice');
 const ytdl = require('@distube/ytdl-core');
 const { spawn } = require('child_process'); // <-- add this
 
-const PORT = 3000;
+const app = express();
+const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 
-const server = express()
-    .listen(PORT, () => console.log(`Listening on ${PORT}`))
-
+// 原先嘗試載入 certs 的邏輯已移除，改為直接啟用 HTTP（不使用 WSS/HTTPS）
+let server = http.createServer(app).listen(PORT, () => {
+  console.warn(`HTTP listening on ${PORT} (WSS disabled). Server uses plain WS. To enable WSS, restore TLS logic and cert files.`);
+});
+ 
 const wss = new SocketServer({ server })
 
 let hasJoinedVoice = false; // Track if bot has already joined
@@ -56,7 +63,9 @@ const autoplay = createAutoplay({
   setLastSongInfo: (v) => { lastSongInfo = v; },
   getYoutubeApi: () => youtubeApi,
   setYoutubeApi: (v) => { youtubeApi = v; },
-  autoplayModeGetter: () => autoplayMode
+  autoplayModeGetter: () => autoplayMode,
+  // 新增：讓 Autoplay 使用 main 的 upcoming 計算（已考慮 shuffle）
+  getUpcomingSongsCount
 });
 const { createPlayer } = require('./player.js');
 const connectionRef = { connection: null }; // 固定參考物件，後面會同步更新
@@ -212,11 +221,39 @@ async function playSongAtIndex(index) {
         console.log(`Now playing: ${title}`);
         console.log(`URL: ${url}`);
 
-        const audioStream = ytdl(url, {
+        // 取得音訊串流（改為加 headers，並在 403 時 fallback 使用 getInfo + downloadFromInfo）
+        let audioStream;
+        try {
+          audioStream = ytdl(url, {
             filter: 'audioonly',
             quality: 'highestaudio',
-            highWaterMark: 1 << 25
-        });
+            highWaterMark: 1 << 25,
+            // 加上 request headers 幫助避開簡單的封鎖
+            requestOptions: {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36',
+                'Accept-Language': 'en-US,en;q=0.9'
+              }
+            }
+          });
+        } catch (err) {
+          // 若直接抓取失敗且為 403，嘗試用 getInfo + downloadFromInfo 作 fallback
+          if (err && String(err.message).includes('Status code: 403')) {
+            try {
+              const info = await ytdl.getInfo(url);
+              audioStream = ytdl.downloadFromInfo(info, {
+                filter: 'audioonly',
+                quality: 'highestaudio',
+                highWaterMark: 1 << 25
+              });
+            } catch (err2) {
+              console.error('Fallback downloadFromInfo also failed:', err2 && err2.message);
+              throw err; // rethrow original
+            }
+          } else {
+            throw err;
+          }
+        }
 
         const resource = createAudioResource(audioStream, {
             inputType: StreamType.Arbitrary,
@@ -489,12 +526,25 @@ async function handleSetAutoplayMode(wsClient, value) {
 function handleSetShuffleMode(wsClient, value) {
   shuffleMode = !!value;
   if (shuffleMode) {
-    shuffleSongs = shuffleArray(allSongs || []);
-    if (currentSongIndex >= 0 && allSongs[currentSongIndex]) {
-      const curUrl = allSongs[currentSongIndex].url;
-      const idx = shuffleSongs.findIndex(s => s.url === curUrl);
-      shuffleIndex = idx >= 0 ? idx : 0;
-    } else shuffleIndex = 0;
+    // 若沒有歌曲，直接初始化空陣列
+    if (!Array.isArray(allSongs) || allSongs.length === 0) {
+      shuffleSongs = [];
+      shuffleIndex = 0;
+    } else {
+      // 如果有正在播放的曲目，保留該曲目為 shuffleSongs[0]，只洗牌之後的 upcoming
+      const curIdx = (typeof currentSongIndex === 'number' && currentSongIndex >= 0) ? currentSongIndex : null;
+      if (curIdx !== null && allSongs[curIdx]) {
+        const cur = allSongs[curIdx];
+        const upcoming = allSongs.slice(curIdx + 1);
+        const shuffledUpcoming = shuffleArray(upcoming);
+        shuffleSongs = [cur].concat(shuffledUpcoming);
+        shuffleIndex = 0; // 目前播放曲目置於 0
+      } else {
+        // 若沒有正在播放的曲目，則整個 allSongs 做洗牌
+        shuffleSongs = shuffleArray(allSongs || []);
+        shuffleIndex = 0;
+      }
+    }
   } else {
     shuffleSongs = [];
     shuffleIndex = 0;
@@ -639,6 +689,38 @@ async function handleAddUrl(url, userIdFromClient, wsClient) {
     });
     youtubeApi = addRes.youtubeApi || youtubeApi;
     console.log(`[Main] addUrlOrPlaylist added ${addRes.addedCount || 0} item(s).`);
+
+    // 新增：若為 shuffle 模式，只把剛加入的項目附加到 shuffleSongs 末端（不重洗）
+    if (shuffleMode) {
+      const addedCount = Number(addRes.addedCount || 0);
+      if (addedCount > 0) {
+        const newItems = allSongs.slice(-addedCount); // 取出剛加入的項目（已被 addUrlOrPlaylist push）
+        // 若 shuffleSongs 還不存在，先初始化為目前的 shuffle 列表（不重洗）
+        if (!Array.isArray(shuffleSongs) || shuffleSongs.length === 0) {
+          shuffleSongs = allSongs.slice(); // 保留現有順序（不重洗）
+          if (currentSongIndex >= 0 && allSongs[currentSongIndex]) {
+            const curUrl = allSongs[currentSongIndex].url;
+            const idx = shuffleSongs.findIndex(s => s.url === curUrl);
+            shuffleIndex = idx >= 0 ? idx : 0;
+          } else {
+            shuffleIndex = 0;
+          }
+        }
+        // 將新項目逐一推到 shuffleSongs 末端，避免重複（若確定不會重複可直接 concat）
+        for (const it of newItems) {
+          // 簡單檢查避免重複 URL（可選）
+          if (!shuffleSongs.find(s => s.url === it.url)) {
+            shuffleSongs.push(it);
+          }
+        }
+        // 選擇性廣播更新的 upcoming 給 clients
+        try {
+          const upcoming = getUpcoming(shuffleSongs, shuffleIndex);
+          broadcast({ upcoming });
+        } catch (_) {}
+      }
+    }
+
     if (!hasJoinedVoice) {
       hasJoinedVoice = true;
       playSongAtIndex(0);
@@ -646,6 +728,38 @@ async function handleAddUrl(url, userIdFromClient, wsClient) {
   } catch (e) {
     console.error('[Main] addUrlOrPlaylist failed:', e && e.message);
     safeSend(wsClient, { error: 'add_failed', message: e && e.message });
+  }
+}
+
+// 新增：提供給 Autoplay 的 upcoming 計算（放在變數宣告後、呼叫 createAutoplay 前）
+function getUpcomingSongsCount() {
+  try {
+    // 若使用 shuffle 隊列，優先以 shuffleIndex / shuffleSongs 計算
+    if (typeof shuffleMode !== 'undefined' && shuffleMode && Array.isArray(shuffleSongs)) {
+      const cur = Number.isFinite(shuffleIndex) ? Math.floor(shuffleIndex) : -1;
+      let lastIndex = shuffleSongs.length - 1;
+      if (typeof lastSongInfo !== 'undefined' && lastSongInfo && lastSongInfo.url) {
+        for (let i = shuffleSongs.length - 1; i >= 0; i--) {
+          if (shuffleSongs[i] && shuffleSongs[i].url === lastSongInfo.url) { lastIndex = i; break; }
+        }
+      }
+      if (cur >= 0) return Math.max(0, Math.floor(lastIndex) - cur);
+      return Math.max(0, shuffleSongs.length);
+    }
+
+    // 否則使用 allSongs / currentSongIndex 計算
+    const list = Array.isArray(allSongs) ? allSongs : [];
+    const curMain = Number.isFinite(currentSongIndex) ? Math.floor(currentSongIndex) : -1;
+    let lastIndexMain = list.length > 0 ? list.length - 1 : -1;
+    if (typeof lastSongInfo !== 'undefined' && lastSongInfo && lastSongInfo.url && list.length > 0) {
+      for (let i = list.length - 1; i >= 0; i--) {
+        if (list[i] && list[i].url === lastSongInfo.url) { lastIndexMain = i; break; }
+      }
+    }
+    if (curMain >= 0) return Math.max(0, Math.floor(lastIndexMain) - curMain);
+    return Math.max(0, list.length);
+  } catch (e) {
+    return Math.max(0, (Array.isArray(allSongs) ? allSongs.length : 0));
   }
 }
 

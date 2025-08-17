@@ -363,27 +363,35 @@ document.addEventListener('DOMContentLoaded', () => {
 });
 
 // load wsconfig.json defaults then connect using stored override
-fetch('wsconfig.json')
-  .then(response => response.json())
-  .then(config => {
-    defaultWsConfig = config || {};
-    const cfg = loadStoredSettings();
-    if (!cfg.ws_host && defaultWsConfig && defaultWsConfig.ws_host) cfg.ws_host = defaultWsConfig.ws_host;
-    if (!cfg.user_id && defaultWsConfig && defaultWsConfig.user_id) cfg.user_id = defaultWsConfig.user_id;
-    createAndAttachWS(cfg);
-  })
-  .catch(err => {
-    console.error('Failed to load wsconfig.json (popup)', err);
-    const cfg = loadStoredSettings();
-    if (cfg.ws_host) createAndAttachWS(cfg);
-  });
+(function initConnectionFromSettings() {
+   // wsconfig.json 已移除；extension 以 localStorage 為唯一預設來源
+   defaultWsConfig = null;
+   const cfg = loadStoredSettings();
+   if (cfg && cfg.ws_host) {
+     createAndAttachWS(cfg);
+   } else {
+     console.warn('No ws_host configured. Please open Settings (⚙️) and enter your WSS host (e.g. wss://your.domain:3000).');
+     // 自動彈出設定視窗，強制使用者輸入 ws_host / user_id
+     openSettingsModal();
+   }
+ })();
 
 function createAndAttachWS(cfg) {
   if (!cfg || !cfg.ws_host) { console.error('No ws_host provided for WebSocket connection.'); return; }
+  // prefer plain ws:// (do not force wss)
+  let host = String(cfg.ws_host).trim();
+  // if user provided wss://, downgrade to ws:// to match server
+  if (/^wss:\/\//i.test(host)) {
+    console.warn('[popup] wss:// provided — using ws:// to match server (WSS disabled)');
+    host = host.replace(/^wss:\/\//i, 'ws://');
+  }
+  // if user provided ws:// keep as-is; if no scheme, prepend ws://
+  if (!/^(wss?:\/\/)/i.test(host)) host = 'ws://' + host;
+
   try { if (ws && ws.readyState === WebSocket.OPEN) ws.close(); } catch (e) {}
-  ws = new WebSocket(cfg.ws_host);
+  ws = new WebSocket(host);
   userId = cfg.user_id || null;
-  currentConnConfig = { ws_host: cfg.ws_host, user_id: userId };
+  currentConnConfig = { ws_host: host, user_id: userId };
 
   ws.onopen = () => {
     console.log('WebSocket connected (popup)', cfg.ws_host);
