@@ -1,16 +1,16 @@
-# Discord Bot + Chrome Extension（本地播放 & Autoplay / Local Playback & Autoplay）
+# Discord Bot + Chrome Extension（A music bot for using the chrome extension to controll and using button but not discord command to play music）
 
-繁體中文（ZHTW）
+繁體中文
 ----------------
 簡介  
-這是一個以 Node.js 實作的 Discord 播放機器人，播放來源由 Chrome 擴充功能傳送（將目前開啟的 YouTube 影片或播放清單送到 Bot）。擴充功能透過 WebSocket 與本機 Bot 溝通並控制播放（加入曲目、跳過、暫停、Shuffle/Repeat、Autoplay 等）。
+這是一個以 Node.js 製作的 Discord 播放機器人，播放來源由 Chrome 擴充功能傳送（將目前開啟的 YouTube 影片或播放清單送到 Bot）。擴充功能透過 WebSocket 與 Bot 溝通並控制播放（加入曲目、跳過、暫停、 隨機播放、 重複播放 、Autoplay 等）， 幫助各位有更好的discord 音樂播放體驗。
 
 主要功能
 - 從 Chrome popup 一鍵把目前 YouTube 影片或 playlist 傳給 Bot 並加入播放清單。  
-- 在 Discord 語音頻道播放音訊（支援 ffmpeg 處理、音量控制）。  
-- 播放控制：播放 / 暫停、上一首 / 下一首、清除播放清單、Shuffle、Repeat（無 / 全部 / 單曲）。  
-- Autoplay：自動搜尋並補入相似歌曲（去重、過濾、相似度判斷）。  
-- Popup 顯示當前曲目與 upcoming 清單，支援請求完整 upcoming 列表。
+- 在 Discord 語音頻道播放音訊。 
+- Autoplay：自動搜尋並加入相似歌曲，確保音樂不會停下來。  
+- Chrome Popup 顯示當前曲目與接下來的歌曲清單，用按鈕控制：播放 / 暫停 / 上一首 / 下一首 / 清除播放清單 / 隨機播放 / 重複播放 / Autoplay
+
 
 架構概覽
 - main.js — WebSocket server、Discord client、播放清單與播放流程管理。  
@@ -39,7 +39,6 @@ Chrome 擴充功能使用
 - 在 YouTube 分頁按「🔗」會把當前分頁 URL 傳給 Bot。若 Bot 尚未連線語音頻道，需先在 Discord 內加入語音並在 popup 設定 user_id。
 
 npm 套件清單（Packages / npm）
------------------------------
 此處列出專案程式碼中實際 require / import 的主要 npm 套件（以 package 名稱為準），供你核對 package.json 或用於安裝。
 
 - discord.js — Discord API client。  
