@@ -1,4 +1,20 @@
 {
+  "name": "discord-bot-chrome-extension",
+  "version": "1.0.0",
+  "description": "一個結合 Discord 音樂機器人與 Chrome 擴充功能的專案。",
+  "main": "main.js",
+  "scripts": {
+    "start": "node main.js",
+    "test": "node test_similarity.js"
+  },
+  "author": "",
+  "license": "MIT",
+  "keywords": [
+    "discord",
+    "bot",
+    "music",
+    "chrome-extension"
+  ],
   "dependencies": {
     "@discordjs/opus": "github:discordjs/opus",
     "@discordjs/voice": "^0.18.0",
