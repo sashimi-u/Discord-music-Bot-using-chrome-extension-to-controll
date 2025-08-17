@@ -97,15 +97,14 @@ License / 套件
 English
 -------
 
-Overview  
-This project is a Node.js Discord music bot controlled by a Chrome extension. The extension sends the currently opened YouTube video or playlist to the bot via WebSocket. The bot joins the user's voice channel and plays audio; the popup UI allows adding tracks and controlling playback.
+Introduction
+This is a Discord music bot built with Node.js. The playback source is sent by a Chrome extension (which sends the currently open YouTube video or playlist to the bot). The extension communicates with the bot via WebSocket and controls playback (adding tracks, skipping, pausing, shuffling, repeating, autoplay, etc.), helping everyone enjoy a better Discord music playback experience.
 
-Key features
-- Add YouTube video or playlist from the Chrome popup.  
-- Play audio in Discord voice channels (ffmpeg supported, adjustable volume).  
-- Playback controls: play/pause, next, previous, clear queue, shuffle, repeat.  
-- Autoplay: automatically find and append similar songs with dedupe and filtering.  
-- Popup shows current track and upcoming items; can request full queue.
+Key Features
+- Send the current YouTube video or playlist to the bot from the Chrome popup and add it to the playlist with one click.
+- Play audio in the Discord voice channel.
+- Autoplay: Automatically search and add similar songs to ensure the music never stops.
+- The Chrome popup displays the current track and the next song list, with buttons to control: Play / Pause / Previous / Next / Clear Playlist / Shuffle / Repeat / Autoplay
 
 Architecture
 - main.js — WebSocket server, Discord client, playlist & playback manager.  
