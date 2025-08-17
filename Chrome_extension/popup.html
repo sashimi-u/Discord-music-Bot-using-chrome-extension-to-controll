@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8"> <!-- ensure UTF-8 -->
+    <title>🎵🔊</title>
+    <style>
+      body {
+        min-width: 350px;
+        min-height: 180px;
+        padding: 20px;
+        /* Prefer emoji fonts to ensure colored emoji rendering */
+        font-family: "Segoe UI Emoji", "Apple Color Emoji", "Noto Color Emoji", Arial, sans-serif;
+        background: #f8f9fa;
+      }
+      #nowPlayingInfo {
+        margin-bottom: 20px;
+        font-size: 1.1em;
+        word-break: break-all;
+      }
+      #upcomingSongs {
+        margin-top: 18px;
+        font-size: 1em;
+        word-break: break-all;
+      }
+      #helloBtn, .controlBtn {
+        width: 100%;
+        padding: 12px 0;
+        font-size: 1.1em;
+        background: #7289da;
+        color: #fff;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        transition: background 0.2s;
+        margin-bottom: 8px;
+      }
+      #helloBtn:hover, .controlBtn:hover {
+        background: #5b6eae;
+      }
+      .controls {
+        display: flex;
+        gap: 10px;
+        margin-top: 0;
+      }
+      .controlBtn {
+        flex: 1;
+        margin-bottom: 0;
+        padding: 10px 0;
+        font-size: 1.3em;
+      }
+      .controls-vert {
+        display: flex;
+        gap: 10px;
+        margin-top: 8px;
+      }
+      .small-full {
+        width: 100%;
+      }
+      /* Ensure the Add URL and Clear buttons share the same height and visual baseline */
+      .top-row {
+        display: flex;
+        gap: 8px;
+        align-items: stretch; /* stretch children to same height */
+      }
+
+      .top-row button {
+        box-sizing: border-box;
+        height: 40px;                /* unified height */
+        padding: 0 12px;
+        border: none;
+        border-radius: 6px;
+        cursor: pointer;
+        font-size: 14px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      /* Add URL button takes remaining space */
+      .top-row #helloBtn {
+        flex: 1;
+        min-width: 0; /* allow shrinking in small windows */
+      }
+
+      /* Smaller square clear button with same height */
+      #clearBtn {
+        width: 40px;    /* matches height for a square button */
+        min-width: 40px;
+        padding: 0;
+        font-size: 18px; /* emoji size */
+        background: #e5534b;
+        color: #fff;
+      }
+      #clearBtn:hover {
+        background: #c5413a;
+      }
+
+      /* optional: make other controls visually consistent if present */
+      .top-row button:focus { outline: none; box-shadow: 0 0 0 3px rgba(67,181,129,0.12); }
+
+      /* Settings modal */
+      #settingsModal {
+        display: none;
+        position: fixed;
+        left: 0; top: 0; right: 0; bottom: 0;
+        background: rgba(0,0,0,0.45);
+        align-items: center;
+        justify-content: center;
+        z-index: 9999;
+      }
+      #settingsModal .sheet {
+        background: #fff;
+        padding: 14px;
+        width: 320px;
+        border-radius: 8px;
+        box-shadow: 0 8px 30px rgba(0,0,0,0.2);
+        font-size: 14px;
+      }
+      #settingsModal label { display:block; margin-top:8px; color:#333; font-size:13px; }
+      #settingsModal input[type="text"] {
+        width:100%;
+        padding:8px 10px;
+        margin-top:6px;
+        box-sizing:border-box;
+        border:1px solid #ddd;
+        border-radius:6px;
+        font-size:13px;
+      }
+      #settingsModal .row { display:flex; gap:8px; margin-top:12px; }
+      #settingsModal button { flex:1; padding:8px 10px; border-radius:6px; border:none; cursor:pointer; }
+      #settingsModal .cancel { background:#eee; }
+      #settingsModal .save { background:#43b581; color:#fff; }
+
+      /* small settings button style (same height as other small button) */
+      #settingsBtn {
+        width: 40px;
+        min-width: 40px;
+        padding: 0;
+        font-size: 16px;
+        background: #99aab5;
+        color: #fff;
+        border-radius: 6px;
+      }
+      #settingsBtn:hover { background: #8799a6; }
+    </style>
+  </head>
+  <body>
+    <div class="top-row">
+      <button id="helloBtn">🔗</button>
+      <button id="clearBtn" title="🗑️ Clear playlist" aria-label="Clear playlist">🗑️</button>
+      <button id="settingsBtn" title="⚙️ Settings" aria-label="Settings">⚙️</button>
+    </div>
+    <div id="addUrlDesc"></div>
+    <div id="nowPlayingInfo"></div>
+
+    <!-- Settings modal -->
+    <div id="settingsModal" role="dialog" aria-modal="true" aria-hidden="true">
+      <div class="sheet" role="document">
+        <h3 style="margin:0 0 8px 0;font-size:15px;">Extension settings</h3>
+        <label for="settingsWsHost">WebSocket host (ws_host)</label>
+        <input id="settingsWsHost" type="text" placeholder="ws://host:3000" />
+        <label for="settingsUserId">User ID (user_id)</label>
+        <input id="settingsUserId" type="text" placeholder="optional user id" />
+        <div class="row">
+          <button class="cancel" id="settingsCancel">Cancel</button>
+          <button class="save" id="settingsSave">Save</button>
+        </div>
+      </div>
+    </div>
+
+    <div class="controls">
+      <button class="controlBtn" id="prevBtn" title="⏮️ Previous — Play previous or restart current" aria-label="Previous">&#9198;</button>
+      <!-- Use play emoji with variation selector to force emoji style -->
+      <button class="controlBtn" id="playBtn" title="▶️ Play/Pause — Toggle playback" aria-label="Play or Pause">&#9654;&#65039;</button>
+      <button class="controlBtn" id="nextBtn" title="⏭️ Next — Skip to next song" aria-label="Next">&#9197;</button>
+    </div>
+    <div class="controls-vert">
+      <button class="controlBtn small-full" id="shuffleBtn" title="🔀 Shuffle — Toggle shuffle mode" aria-label="Shuffle">&#128256;</button>
+      <button class="controlBtn small-full" id="replayBtn" title="🔁 Repeat — Cycle: No repeat → Repeat All → Repeat One" aria-label="Repeat mode">&#128257;</button>
+      <button class="controlBtn small-full" id="autoplayBtn" title="🔄 Autoplay — Auto-add songs to keep playlist ≥ 10" aria-label="Autoplay">&#128260;</button>
+    </div>
+    <div id="upcomingSongs"></div>
+
+    <script src="popup.js"></script> <!-- keep at end so DOM elements exist -->
+  </body>
+</html>

@@ -1,0 +1,33 @@
+{
+  "removeKeywords": [
+    "mv",
+    "music video",
+    "performance",
+    "performance video",
+    "cover",
+    "official",
+    "live",
+    "karaoke",
+    "Covered by",
+    "歌ってみた",
+    "cover by",
+    "covering",
+    "covered",
+    "初音ミク",
+    "Hatsune Miku"
+  ],
+  "similarityThreshold": 0.92,
+  "titleMaxLength": 50,
+  "forbiddenWords": [
+    "創作譜面",
+    "commentary",
+    "未公開",
+    "demo",
+    "未発表",
+    "lyrics",
+    "字幕",
+    "歌詞",
+    "instrumental",
+    "subtitles"
+  ]
+}

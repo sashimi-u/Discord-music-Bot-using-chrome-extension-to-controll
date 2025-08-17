@@ -1,0 +1,19 @@
+{
+  "name": "🎵🔊",
+  "description": "🔧🎶",
+  "version": "1.0",
+  "manifest_version": 3,
+  "permissions": [
+    "tabs"
+  ],
+  "web_accessible_resources": [
+    {
+      "resources": ["wsconfig.json"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "music.png"
+  }
+}
