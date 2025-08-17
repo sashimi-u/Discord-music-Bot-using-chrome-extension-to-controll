@@ -38,6 +38,24 @@ Chrome 擴充功能使用
 - Popup 設定：輸入 WebSocket host，例如 ws://YOUR_HOST:3000（若在同台機器可用 ws://localhost:3000），以及（可選）Discord user_id（擴充功能會把 user_id 一併送出，方便 Bot 找到要加入的語音頻道）。  
 - 在 YouTube 分頁按「🔗」會把當前分頁 URL 傳給 Bot。若 Bot 尚未連線語音頻道，需先在 Discord 內加入語音並在 popup 設定 user_id。
 
+npm 套件清單（Packages / npm）
+-----------------------------
+此處列出專案程式碼中實際 require / import 的主要 npm 套件（以 package 名稱為準），供你核對 package.json 或用於安裝。
+
+- discord.js — Discord API client。  
+- @discordjs/voice — Discord 語音功能（音訊播放 / 連線）。  
+- youtubei.js — 取得 YouTube 資訊與搜尋（Innertube API）。  
+- @distube/ytdl-core — 下載 YouTube 音訊（ytdl-core 的 fork/包裝）。  
+- ffmpeg-static — 提供 ffmpeg 可執行檔路徑（用於音訊轉碼）。  
+- ws — WebSocket server / client（擴充功能與 bot 的通訊）。  
+- express — 提供簡單 HTTP server（main.js 使用）。  
+
+（程式碼還會使用 Node 內建模組：fs, path, http/https, child_process 等）
+
+快速安裝（範例）
+- 在專案根目錄執行：
+  npm install discord.js @discordjs/voice youtubei.js @distube/ytdl-core ffmpeg-static ws express
+
 WebSocket 指令摘要（由 popup 發送）
 - 傳送純 URL（字串） → 加入播放清單並在必要時讓 Bot 加入你所在的語音頻道（需 user_id）。  
 - JSON 指令範例：  
@@ -145,3 +163,19 @@ Security notices
 
 Author note
 - I'm just a programming noob and this is my first project. Much of the content was produced or organized with help from AI. Thanks for reading — feedback and bug reports are welcome.
+
+## NPM packages used (English)
+
+This project directly requires the following npm packages (used in the repository source):
+
+- discord.js — Discord API client (bot core).  
+- @discordjs/voice — Discord voice connections and audio playback.  
+- youtubei.js — Innertube-based YouTube API/search/playlist access.  
+- @distube/ytdl-core — ytdl-core fork/wrapper used to download YouTube audio.  
+- ffmpeg-static — Provides a portable ffmpeg binary path used by the player.  
+- ws — WebSocket server used for communication between the Chrome extension and the bot.  
+- express — Lightweight HTTP server used by main.js.
+
+Install example:
+npm install discord.js @discordjs/voice youtubei.js @distube/ytdl-core ffmpeg-static ws express
+

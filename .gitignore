@@ -1,7 +1,31 @@
+# Node modules
 node_modules/
+
+# Local config / secrets
 config.json
 .env
-*.pem
-*.key
+.env.* 
+
+# Keep example config tracked
+!config.example.json
+
+# OS / editor / logs
 .DS_Store
 npm-debug.log
+*.log
+.vscode/
+.history/
+
+# Keys / certificates
+*.pem
+*.key
+
+# Build / output
+dist/
+build/
+coverage/
+
+# Binaries (avoid committing large executables)
+*.exe
+*.dll
+*.soconfig.json
