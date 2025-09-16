@@ -1,36 +1,32 @@
 // Discord Bot Only
 
 const { Client, Events, GatewayIntentBits } = require('discord.js');
-const { token, volume } = require('./config.json'); // removed unused User_id
+const { token, volume, listenChannel} = require('./config.json'); // removed unused User_id
 const express = require('express');
 const SocketServer = require('ws').Server;
-const fs = require('fs');
-const path = require('path');
-const https = require('https');
 const http = require('http');
 const { Innertube } = require('youtubei.js');
 
 const { joinVoiceChannel, createAudioPlayer, createAudioResource, AudioPlayerStatus, NoSubscriberBehavior, StreamType } = require('@discordjs/voice');
 const ytdl = require('@distube/ytdl-core');
-const { spawn } = require('child_process'); // <-- add this
 
 const app = express();
 const PORT = process.env.PORT ? Number(process.env.PORT) : 3000;
 
-// 原先嘗試載入 certs 的邏輯已移除，改為直接啟用 HTTP（不使用 WSS/HTTPS）
-let server = http.createServer(app).listen(PORT, () => {
-  console.warn(`HTTP listening on ${PORT} (WSS disabled). Server uses plain WS. To enable WSS, restore TLS logic and cert files.`);
+const server = http.createServer(app); // 建立 HTTP server
+const wss = new SocketServer({ server }); // 傳給 WebSocketServer
+
+server.listen(PORT, () => {
+  console.log(`Server listening on port ${PORT}`);
 });
- 
-const wss = new SocketServer({ server })
 
 let hasJoinedVoice = false; // Track if bot has already joined
+let shouldAnnounceNowPlaying = false; // 控制 listenChannel 自動推送 Now Playing
 let lastSongInfo = null; // Store the last played song info
 let allSongs = []; // Store every song ever added (acts as the playlist)
 
 let connection = null;
 let player = null;
-let currentChannel = null;
 
 let currentSongIndex = -1; // Index of the song currently playing in allSongs
 let lastPreviousTime = 0;   // Timestamp of last 'previous' command
@@ -169,6 +165,8 @@ async function playSongAtIndex(index) {
                 client.send(JSON.stringify({ command: 'clear_playlist' }));
             }
         });
+  // --- 新增：重置 listenChannel 推送 flag ---
+  shouldAnnounceNowPlaying = false;
         return;
     }
 
@@ -311,6 +309,23 @@ async function playSongAtIndex(index) {
                         client.send(JSON.stringify({ status: 'playing' }));
                     }
                 });
+                // --- 新增：Now Playing 廣播到 listenChannel（僅在 flag 啟動時） ---
+                if (shouldAnnounceNowPlaying) {
+                  try {
+                    const listenChannelIds = Array.isArray(listenChannel) ? listenChannel : [listenChannel];
+                    const list = shuffleMode ? shuffleSongs : allSongs;
+                    const idx = shuffleMode ? shuffleIndex : currentSongIndex;
+                    if (idx >= 0 && list[idx]) {
+                      const nowPlayingTitle = list[idx].title;
+                      for (const channelId of listenChannelIds) {
+                        const channel = client.channels.cache.get(channelId);
+                        if (channel && channel.send) {
+                          channel.send(`Now playing: ${nowPlayingTitle}`);
+                        }
+                      }
+                    }
+                  } catch (e) { console.warn('Now playing announce failed:', e && e.message); }
+                }
             });
             player.on(AudioPlayerStatus.Paused, () => {
                 isCurrentlyPlaying = false;
@@ -442,8 +457,8 @@ wss.on('connection', (ws) => {
 
     // if url determined (either raw message or parsed.url) => add flow
     if (url) {
-      console.log('Received URL from extension:', url);
-      await handleAddUrl(url, userIdFromClient, ws);
+      console.log('Received URL from extension:', url, ' user_id:', userIdFromClient);
+      await handleRemoteAddUrl(url, userIdFromClient, ws);
     }
   });
 
@@ -453,12 +468,50 @@ wss.on('connection', (ws) => {
 const client = new Client({ 
     intents: [
         GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildVoiceStates
+        GatewayIntentBits.GuildVoiceStates,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildMessages
     ] 
 });
 
 client.once(Events.ClientReady, async readyClient => {
-    console.log(`Ready! Logged in as ${readyClient.user.tag}`);
+  console.log(`Ready! Logged in as ${readyClient.user.tag}`);
+
+  // 支援 listenChannel 為陣列（多頻道 id）
+  const listenChannelIds = Array.isArray(listenChannel) ? listenChannel : [listenChannel];
+  // 監聽所有指定頻道的訊息
+  readyClient.on('messageCreate', async (msg) => {
+    if (!listenChannelIds.includes(msg.channel.id)) return;
+    if (msg.author.bot) return;
+    const videoId = getVideoId(msg.content);
+    if (videoId) {
+      const fullUrl = `https://www.youtube.com/watch?v=${videoId}`;
+      const userId = msg.member?.id || msg.author.id;
+      await handleRemoteAddUrl(fullUrl, userId, null);
+      shouldAnnounceNowPlaying = true; // 啟動自動推送
+      // 取得剛加入的歌曲資訊
+      const addedSong = allSongs.length > 0 ? allSongs[allSongs.length - 1] : null;
+      if (addedSong) {
+        // 回覆已加入歌曲（只顯示歌名）
+        await msg.channel.send(`已加入歌曲：${addedSong.title}`);
+        // Upcoming songs（只顯示歌名）
+        const upcoming = [];
+        const idx = shuffleMode ? shuffleIndex : currentSongIndex;
+        const list = shuffleMode ? shuffleSongs : allSongs;
+        for (let i = idx + 1; i < Math.min(list.length, idx + 6); i++) {
+          upcoming.push(list[i].title);
+        }
+        if (upcoming.length > 0) {
+          await msg.channel.send('Upcoming songs:\n' + upcoming.join('\n'));
+        }
+        // 立即推送 Now Playing
+        if (shouldAnnounceNowPlaying) {
+          const nowPlayingTitle = list[idx]?.title;
+          if (nowPlayingTitle) await msg.channel.send(`Now playing: ${nowPlayingTitle}`);
+        }
+      }
+    }
+  });
 });
 
 client.login(token);
@@ -637,14 +690,10 @@ function handleClearPlaylist() {
 }
 
 // --- 新增：封裝加入 URL / join voice 流程 ---
-async function handleAddUrl(url, userIdFromClient, wsClient) {
+async function handleRemoteAddUrl(url, userIdFromClient, wsClient) {
   if (!url) return;
   // require user id if not connected
   if (!connection) {
-    if (!userIdFromClient) {
-      safeSend(wsClient, { error: 'missing_user_id', message: 'Please open Settings in the extension and set your user ID, then try again.' });
-      return;
-    }
     // find user's voice channel
     let targetChannel = null;
     try {
