@@ -22,6 +22,7 @@ server.listen(PORT, () => {
 
 let hasJoinedVoice = false; // Track if bot has already joined
 let shouldAnnounceNowPlaying = false; // 控制 listenChannel 自動推送 Now Playing
+let lastActiveChannelId = null; // 最後一次用來加歌的頻道 id
 let lastSongInfo = null; // Store the last played song info
 let allSongs = []; // Store every song ever added (acts as the playlist)
 
@@ -165,8 +166,9 @@ async function playSongAtIndex(index) {
                 client.send(JSON.stringify({ command: 'clear_playlist' }));
             }
         });
-  // --- 新增：重置 listenChannel 推送 flag ---
+  // --- 新增：重置 listenChannel 推送 flag與頻道 ---
   shouldAnnounceNowPlaying = false;
+  lastActiveChannelId = null;
         return;
     }
 
@@ -309,19 +311,16 @@ async function playSongAtIndex(index) {
                         client.send(JSON.stringify({ status: 'playing' }));
                     }
                 });
-                // --- 新增：Now Playing 廣播到 listenChannel（僅在 flag 啟動時） ---
-                if (shouldAnnounceNowPlaying) {
+                // --- 新增：Now Playing 只推送到最後一次用來加歌的頻道 ---
+                if (shouldAnnounceNowPlaying && lastActiveChannelId) {
                   try {
-                    const listenChannelIds = Array.isArray(listenChannel) ? listenChannel : [listenChannel];
                     const list = shuffleMode ? shuffleSongs : allSongs;
                     const idx = shuffleMode ? shuffleIndex : currentSongIndex;
                     if (idx >= 0 && list[idx]) {
                       const nowPlayingTitle = list[idx].title;
-                      for (const channelId of listenChannelIds) {
-                        const channel = client.channels.cache.get(channelId);
-                        if (channel && channel.send) {
-                          channel.send(`Now playing: ${nowPlayingTitle}`);
-                        }
+                      const channel = client.channels.cache.get(lastActiveChannelId);
+                      if (channel && channel.send) {
+                        channel.send(`Now playing: ${nowPlayingTitle}`);
                       }
                     }
                   } catch (e) { console.warn('Now playing announce failed:', e && e.message); }
@@ -489,6 +488,7 @@ client.once(Events.ClientReady, async readyClient => {
       const userId = msg.member?.id || msg.author.id;
       await handleRemoteAddUrl(fullUrl, userId, null);
       shouldAnnounceNowPlaying = true; // 啟動自動推送
+      lastActiveChannelId = msg.channel.id; // 記錄最後一次用來加歌的頻道
       // 取得剛加入的歌曲資訊
       const addedSong = allSongs.length > 0 ? allSongs[allSongs.length - 1] : null;
       if (addedSong) {
